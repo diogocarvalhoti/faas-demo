@@ -1,0 +1,19 @@
+specVersion: 0.36.0
+name: cep
+runtime: springboot
+registry: docker.io/diogocarvalho/faas-demo
+image: docker.io/diogocarvalho/faas-demo/cep:latest
+created: 2025-11-03T09:50:23.501293-03:00
+build:
+  builder: pack
+  buildEnvs:
+  - name: BP_NATIVE_IMAGE
+    value: "false"
+  - name: BP_JVM_VERSION
+    value: "21"
+  - name: BP_MAVEN_ACTIVE_PROFILES
+    value: native
+deploy:
+  healthEndpoints:
+    liveness: /actuator/health
+    readiness: /actuator/health
