@@ -1422,9 +1422,10 @@ kn service update api \
 
 ### Contato
 
-**Diogo Carvalho de Matos**  
+👨‍💻 **Diogo Carvalho de Matos**  
 🏢 **Cargo:** Arquiteto de Software e Soluções  
-📧 **Email:** diogo.matos@castgroup.com.br 
+📧 **Email:** diogo.matos@castgroup.com.br
+
 💻 **Demo:** Spring Boot + Knative + Kubernetes On-Premise
 
 ### Recursos da Apresentação
