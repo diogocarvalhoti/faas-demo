@@ -1,11 +1,8 @@
 specVersion: 0.36.0
-name: cep
+name: cep-function-springboot
 runtime: springboot
-registry: docker.io/diogocarvalho/faas-demo
-image: docker.io/diogocarvalho/faas-demo/cep:latest
-created: 2025-11-03T09:50:23.501293-03:00
+created: 2025-11-05T10:50:30.196664-03:00
 build:
-  builder: pack
   buildEnvs:
   - name: BP_NATIVE_IMAGE
     value: "false"

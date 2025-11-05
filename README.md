@@ -1,14 +1,13 @@
 # 🚀 Serverless na Prática: Desbravando o Mundo do FaaS
 
-**Autor:** Diogo Carvalho de Matos – Arquiteto de Soluções  
+**Autor:** Diogo Carvalho de Matos – Arquiteto de Software e Soluções  
 **Tema:** Serverless na Prática: Desbravando o Mundo do FaaS  
-**Duração estimada:** ~40 minutos  
 
 ---
 
 ## 🧭 Agenda
 
-### 📐 **PARTE 1: Visão de Infraestrutura** (~20 min)
+### 📐 **PARTE 1: Visão de Arquitetura/Infraestrutura**
 
 1. **Introdução ao FaaS** - Conceitos fundamentais
 2. **Problemas que o FaaS resolve** - Benefícios e casos de uso
@@ -17,7 +16,7 @@
 5. **Configuração do Knative em cluster on-premise** - Setup passo a passo
 6. **Arquitetura e escalabilidade** - Como funciona internamente
 
-### 👨‍💻 **PARTE 2: Visão do Desenvolvedor** (~20 min)
+### 👨‍💻 **PARTE 2: Visão do Desenvolvedor** 
 
 7. **Criando uma função Spring Boot** - Desenvolvimento prático
 8. **Build e Deploy** - Do código à produção
@@ -27,7 +26,7 @@
 
 ---
 
-## 📐 PARTE 1: VISÃO DE INFRAESTRUTURA
+## 📐 PARTE 1: VISÃO DE ARQUITETURA/INFRAESTRUTURA
 
 > **Foco:** Como o FaaS funciona, configuração e operação do Knative no Kubernetes
 
@@ -60,7 +59,7 @@
 ✅ Tarefas agendadas (cron jobs)
 
 📊 **Exemplo Prático:**  
-Um serviço que processa upload de imagens **apenas quando necessário** — sem manter servidores ativos 24/7, economizando recursos e custos.
+Um serviço que consulte a base/api de endereços **apenas quando necessário** — sem manter servidores ativos 24/7, economizando recursos e custos.
 
 ---
 
@@ -84,11 +83,6 @@ Um serviço que processa upload de imagens **apenas quando necessário** — sem
 ✅ **Operações simplificadas** - Plataforma gerencia tudo automaticamente  
 ✅ **Alta disponibilidade** - Redundância e failover automáticos
 
-### ROI Típico
-
-- **Redução de custos**: 60-80% em cenários com tráfego variável
-- **Redução de tempo de deploy**: De semanas para horas/minutos
-- **Redução de overhead operacional**: 70-90% menos tempo com infraestrutura
 
 ---
 
@@ -276,8 +270,149 @@ Permite funções reagirem a eventos de múltiplas fontes:
 annotations:
   autoscaling.knative.dev/minScale: "0"  # Permite scale-to-zero
   autoscaling.knative.dev/maxScale: "10" # Limite máximo
-  autoscaling.knative.dev/target: "100"  # Requisições por pod
+  autoscaling.knative.dev/target: "10"   # Requisições por pod (configurado para demonstração)
 ```
+
+---
+
+## 🧰 Configuração do Knative em Cluster On-Premise
+
+> **Perspectiva de Infraestrutura:** Passo a passo completo para instalar e configurar o Knative
+
+### Pré-requisitos
+
+Antes de instalar o Knative, certifique-se de ter:
+
+✅ **Kubernetes cluster** funcionando (v1.25+)  
+✅ **kubectl** configurado e com acesso ao cluster  
+✅ **Istio** ou **Kourier** para ingress (usaremos Kourier)  
+✅ **Métricas** (Metrics Server) para autoscaling  
+✅ **DNS** configurado ou usar nip.io para desenvolvimento
+
+### Passo 1: Verificar o Cluster Kubernetes
+
+```bash
+# Verificar versão do cluster
+kubectl version --short
+
+# Verificar nós do cluster
+kubectl get nodes
+
+# Verificar se o Metrics Server está instalado (necessário para autoscaling)
+kubectl top nodes
+```
+
+### Passo 2: Instalar Knative Serving CRDs
+
+**Custom Resource Definitions** definem os recursos personalizados do Knative:
+
+```bash
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.19.7/serving-crds.yaml
+```
+
+**O que isso instala:**
+- `services.serving.knative.dev` - Knative Services
+- `configurations.serving.knative.dev` - Configurations
+- `revisions.serving.knative.dev` - Revisions
+- `routes.serving.knative.dev` - Routes
+
+**Verificar instalação:**
+```bash
+kubectl get crd | grep knative
+```
+
+### Passo 3: Instalar Knative Serving Core
+
+Instala os controladores que gerenciam os recursos Knative:
+
+```bash
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.19.7/serving-core.yaml
+```
+
+**Verificar se os pods estão rodando:**
+```bash
+kubectl get pods -n knative-serving
+# Deve mostrar pods: controller, autoscaler, networking-istio, webhook
+```
+
+### Passo 4: Instalar Kourier (Ingress Controller)
+
+**Kourier** é um ingress controller leve para Knative (alternativa ao Istio):
+
+```bash
+kubectl apply -f https://github.com/knative-extensions/net-kourier/releases/download/knative-v1.19.6/kourier.yaml
+```
+
+**Verificar instalação:**
+```bash
+kubectl get pods -n kourier-system
+# Deve mostrar: 3scale-kourier-control e 3scale-kourier-gateway
+```
+
+### Passo 5: Configurar Domínio Padrão
+
+Para desenvolvimento local, vamos usar **nip.io** que resolve IPs automaticamente:
+
+```bash
+# Instalar configuração de domínio padrão
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.19.7/serving-default-domain.yaml
+
+# Configurar domínio local (127.0.0.1.nip.io)
+kubectl patch configmap/config-domain \
+  --namespace knative-serving \
+  --type merge \
+  --patch '{"data": {"127.0.0.1.nip.io": ""}}'
+```
+
+**Para produção:** Configure seu próprio domínio DNS apontando para o IP do ingress.
+
+### Passo 6: Configurar Kourier como Ingress Padrão
+
+```bash
+kubectl patch configmap/config-network \
+  --namespace knative-serving \
+  --type merge \
+  --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
+```
+
+### Passo 7: Instalar HPA (Horizontal Pod Autoscaler)
+
+HPA permite autoscaling baseado em CPU/memória:
+
+```bash
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.19.7/serving-hpa.yaml
+```
+
+### Passo 8: Verificar Instalação Completa
+
+```bash
+# Verificar todos os componentes
+kubectl get pods --all-namespaces | grep -E "knative|kourier"
+
+# Verificar se Knative está pronto
+kubectl get knative
+```
+
+### Passo 9: Configurar Port Forward (Desenvolvimento Local)
+
+Para acessar serviços localmente sem configurar LoadBalancer:
+
+```bash
+# Em um terminal separado, fazer port-forward do Kourier
+kubectl port-forward --namespace kourier-system service/kourier 8080:80
+```
+
+Agora você pode acessar serviços em: `http://<servico>.<namespace>.127.0.0.1.nip.io:8080`
+
+### Resumo da Instalação
+
+Após completar todos os passos, você terá:
+
+✅ **Knative Serving** instalado e configurado  
+✅ **Kourier** como ingress controller  
+✅ **HPA** para autoscaling baseado em métricas  
+✅ **Domínio** configurado para desenvolvimento  
+✅ **Cluster** pronto para receber funções serverless
 
 ---
 
@@ -414,12 +549,12 @@ Agora que entendemos **como o FaaS funciona** e **como configurar o Knative** no
              ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              Spring Cloud Function Application              │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  @Bean Function<Message<String>, String> cep()      │  │
-│  │  - Recebe CEP via HTTP POST                          │  │
-│  │  - Consulta API ViaCEP                               │  │
-│  │  - Retorna JSON com dados do endereço                │  │
-│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  @Bean Function<Message<String>, String> cep()       │   │
+│  │  - Recebe CEP via HTTP POST                          │   │
+│  │  - Consulta API ViaCEP                               │   │
+│  │  - Retorna JSON com dados do endereço                │   │
+│  └──────────────────────────────────────────────────────┘   │
 └────────────┬────────────────────────────────────────────────┘
              │
              │ 2. Build (Maven + Docker)
@@ -434,27 +569,27 @@ Agora que entendemos **como o FaaS funciona** e **como configurar o Knative** no
 ┌─────────────────────────────────────────────────────────────┐
 │              Kubernetes Cluster (On-Premise)                │
 │                                                             │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │          Knative Service (KSVC)                      │  │
-│  │  ┌──────────────────────────────────────────────┐   │  │
-│  │  │  Configuration → Revision → Deployment      │   │  │
-│  │  └──────────────────────────────────────────────┘   │  │
-│  │                      │                               │  │
-│  │                      ▼                               │  │
-│  │  ┌──────────────────────────────────────────────┐   │  │
-│  │  │  Autoscaler (KPA/HPA)                       │   │  │
-│  │  │  - Scale: 0 → N pods                        │   │  │
-│  │  │  - Baseado em concorrência/requisições       │   │  │
-│  │  └──────────────────────────────────────────────┘   │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                      │                                       │
-│                      ▼                                       │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │           Kourier Ingress Controller                 │  │
-│  │  - Exposição HTTP/HTTPS                              │  │
-│  │  - Load Balancing                                    │  │
-│  │  - Domain: api.cep.127.0.0.1.nip.io                 │  │
-│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │          Knative Service (KSVC)                      │   │
+│  │  ┌──────────────────────────────────────────────┐    │   │
+│  │  │  Configuration → Revision → Deployment       │    │   │
+│  │  └──────────────────────────────────────────────┘    │   │
+│  │                      │                               │   │
+│  │                      ▼                               │   │
+│  │  ┌──────────────────────────────────────────────┐    │   │
+│  │  │  Autoscaler (KPA/HPA)                        │    │   │
+│  │  │  - Scale: 0 → N pods                         │    │   │
+│  │  │  - Baseado em concorrência/requisições       │    │   │
+│  │  └──────────────────────────────────────────────┘    │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                      │                                      │
+│                      ▼                                      │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │           Kourier Ingress Controller                 │   │
+│  │  - Exposição HTTP/HTTPS                              │   │
+│  │  - Load Balancing                                    │   │
+│  │  - Domain: api.cep.127.0.0.1.nip.io                  │   │
+│  └──────────────────────────────────────────────────────┘   │
 └────────────┬────────────────────────────────────────────────┘
              │
              │ 4. HTTP Request
@@ -463,135 +598,6 @@ Agora que entendemos **como o FaaS funciona** e **como configurar o Knative** no
 │                    Cliente (curl/browser)                   │
 └─────────────────────────────────────────────────────────────┘
 ```
-
----
-
-## 🧰 Configuração do Knative em Cluster On-Premise
-
-### Pré-requisitos
-
-Antes de instalar o Knative, certifique-se de ter:
-
-✅ **Kubernetes cluster** funcionando (v1.25+)  
-✅ **kubectl** configurado e com acesso ao cluster  
-✅ **Istio** ou **Kourier** para ingress (usaremos Kourier)  
-✅ **Métricas** (Metrics Server) para autoscaling  
-✅ **DNS** configurado ou usar nip.io para desenvolvimento
-
-### Passo 1: Verificar o Cluster Kubernetes
-
-```bash
-# Verificar versão do cluster
-kubectl version --short
-
-# Verificar nós do cluster
-kubectl get nodes
-
-# Verificar se o Metrics Server está instalado (necessário para autoscaling)
-kubectl top nodes
-```
-
-### Passo 2: Instalar Knative Serving CRDs
-
-**Custom Resource Definitions** definem os recursos personalizados do Knative:
-
-```bash
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.19.7/serving-crds.yaml
-```
-
-**O que isso instala:**
-- `services.serving.knative.dev` - Knative Services
-- `configurations.serving.knative.dev` - Configurations
-- `revisions.serving.knative.dev` - Revisions
-- `routes.serving.knative.dev` - Routes
-
-**Verificar instalação:**
-```bash
-kubectl get crd | grep knative
-```
-
-### Passo 3: Instalar Knative Serving Core
-
-Instala os controladores que gerenciam os recursos Knative:
-
-```bash
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.19.7/serving-core.yaml
-```
-
-**Verificar se os pods estão rodando:**
-```bash
-kubectl get pods -n knative-serving
-# Deve mostrar pods: controller, autoscaler, networking-istio, webhook
-```
-
-### Passo 4: Instalar Kourier (Ingress Controller)
-
-**Kourier** é um ingress controller leve para Knative (alternativa ao Istio):
-
-```bash
-kubectl apply -f https://github.com/knative-extensions/net-kourier/releases/download/knative-v1.19.6/kourier.yaml
-```
-
-**Verificar instalação:**
-```bash
-kubectl get pods -n kourier-system
-# Deve mostrar: 3scale-kourier-control e 3scale-kourier-gateway
-```
-
-### Passo 5: Configurar Domínio Padrão
-
-Para desenvolvimento local, vamos usar **nip.io** que resolve IPs automaticamente:
-
-```bash
-# Instalar configuração de domínio padrão
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.19.7/serving-default-domain.yaml
-
-# Configurar domínio local (127.0.0.1.nip.io)
-kubectl patch configmap/config-domain \
-  --namespace knative-serving \
-  --type merge \
-  --patch '{"data": {"127.0.0.1.nip.io": ""}}'
-```
-
-**Para produção:** Configure seu próprio domínio DNS apontando para o IP do ingress.
-
-### Passo 6: Configurar Kourier como Ingress Padrão
-
-```bash
-kubectl patch configmap/config-network \
-  --namespace knative-serving \
-  --type merge \
-  --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
-```
-
-### Passo 7: Instalar HPA (Horizontal Pod Autoscaler)
-
-HPA permite autoscaling baseado em CPU/memória:
-
-```bash
-kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.19.7/serving-hpa.yaml
-```
-
-### Passo 8: Verificar Instalação Completa
-
-```bash
-# Verificar todos os componentes
-kubectl get pods --all-namespaces | grep -E "knative|kourier"
-
-# Verificar se Knative está pronto
-kubectl get knative
-```
-
-### Passo 9: Configurar Port Forward (Desenvolvimento Local)
-
-Para acessar serviços localmente sem configurar LoadBalancer:
-
-```bash
-# Em um terminal separado, fazer port-forward do Kourier
-kubectl port-forward --namespace kourier-system service/kourier 8080:80
-```
-
-Agora você pode acessar serviços em: `http://<servico>.<namespace>.127.0.0.1.nip.io:8080`
 
 ---
 
@@ -743,7 +749,7 @@ func run
 # Em outro terminal, testar
 curl -X POST http://localhost:8080/cep \
   -H "Content-Type: text/plain" \
-  -d "71691058"
+  -d "71691000"
 ```
 
 ---
@@ -755,34 +761,80 @@ curl -X POST http://localhost:8080/cep \
 Se preferir controle total, crie um `Dockerfile`:
 
 ```dockerfile
-FROM openjdk:21-slim
+FROM --platform=linux/arm64 alpine:3.19
+# FROM --platform=linux/amd64 alpine:3.19
 
-WORKDIR /app
+# Instalar bibliotecas necessárias para binários nativos
+RUN apk add --no-cache libc6-compat zlib
 
-# Copiar JAR compilado
-COPY target/*.jar /app/cep.jar
+# Copiar o binário nativo (já buildado localmente para Linux)
+COPY target/function /app/function
 
-# Expor porta (Spring Boot usa 8080 por padrão)
+# Tornar executável
+RUN chmod +x /app/function
+
+# Expor porta padrão do Spring Boot
 EXPOSE 8080
 
-# Healthcheck para Kubernetes
-HEALTHCHECK --interval=30s --timeout=3s \
-  CMD curl -f http://localhost:8080/actuator/health || exit 1
+# Usar usuário não-root (segurança)
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
 
-# Comando para executar
-CMD ["java", "-jar", "/app/cep.jar"]
+# Executar o binário nativo
+ENTRYPOINT ["/app/function"]
+
 ```
 
 **Build e push manual:**
+
+Por tratar-se de um ambiente local MacOS ARM64, temos que buildar a imagem para linux, com isso, criei o script shell abaixo para facilitar este procedimento:
+
+```bash
+#!/bin/bash
+
+# Script para executar Maven dentro do Docker (como se fosse local)
+# Permite usar comandos Maven normalmente, mas roda dentro do container
+
+set -e
+
+# Verificar se Docker está rodando
+if ! docker info > /dev/null 2>&1; then
+    echo "❌ Docker não está rodando. Por favor, inicie o Docker e tente novamente."
+    exit 1
+fi
+
+# Diretório do projeto
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Detectar plataforma
+PLATFORM="${DOCKER_PLATFORM:-linux/arm64}"
+
+# Executar Maven dentro do container Docker
+# Monta o diretório do projeto como volume, então as mudanças são preservadas
+docker run --rm -it \
+  --platform "$PLATFORM" \
+  -v "$PROJECT_DIR:/build" \
+  -w /build \
+  -v "$HOME/.m2:/root/.m2" \
+  ghcr.io/graalvm/graalvm-community:latest \
+  bash -c "
+    # Instalar native-image se não estiver instalado
+    if ! command -v native-image &> /dev/null; then
+      echo '📦 Instalando native-image...'
+      gu install native-image
+    fi
+    
+    # Executar o comando Maven passado como argumento
+    ./mvnw \"\$@\"
+  " -- "$@"
+```
+
 ```bash
 # Compilar projeto
-mvn clean package -DskipTests
+./build.sh -P native native:compile -DskipTests
 
-# Build da imagem
-docker build -t diogocarvalho/faas-demo:latest .
-
-# Push para registry
-docker push diogocarvalho/faas-demo:latest
+#Build e Push da imagem
+docker build -t diogocarvalho/faas-demo:latest . && docker push diogocarvalho/faas-demo:latest
 ```
 
 ### Opção 2: Usando Knative Func CLI (Recomendado)
@@ -830,7 +882,8 @@ kn service create api \
   --namespace cep \
   --env JAVA_OPTS="-Xmx512m" \
   --annotation autoscaling.knative.dev/minScale="0" \
-  --annotation autoscaling.knative.dev/maxScale="10"
+  --annotation autoscaling.knative.dev/maxScale="10" \
+  --annotation autoscaling.knative.dev/target="10"
 
 # Ou usar arquivo de configuração
 kn service apply -f service.yaml
@@ -852,7 +905,7 @@ spec:
       annotations:
         autoscaling.knative.dev/minScale: "0"
         autoscaling.knative.dev/maxScale: "10"
-        autoscaling.knative.dev/target: "100"
+        autoscaling.knative.dev/target: "10"
     spec:
       containers:
       - image: docker.io/diogocarvalho/faas-demo:latest
@@ -1349,34 +1402,6 @@ kn service update api \
   --annotation timeoutSeconds="300"
 ```
 
----
-
-## 📊 Comparação: Tempo de Execução
-
-### Deploy Tradicional vs FaaS
-
-| Etapa | Tradicional | FaaS (Knative) |
-|-------|-------------|----------------|
-| Provisionar infra | 30-60 min | 0 min |
-| Configurar servidor | 15-30 min | 0 min |
-| Deploy aplicação | 5-10 min | 1-2 min |
-| Configurar load balancer | 10-15 min | Automático |
-| Configurar autoscaling | 20-30 min | Automático |
-| **Total** | **80-145 min** | **1-2 min** |
-
-### Economia de Custo (Exemplo)
-
-**Cenário:** API com 1000 requisições/dia, picos de 50 req/min
-
-| Modelo | Custos Mensais (estimado) |
-|--------|---------------------------|
-| **Servidor dedicado** (sempre on) | $50-100 |
-| **Kubernetes (3 pods mínimo)** | $30-60 |
-| **FaaS (pay-per-use)** | $5-15 |
-
-**Economia:** 70-85% em cenários de tráfego variável
-
----
 
 ## 🙌 Encerramento
 
@@ -1398,8 +1423,8 @@ kn service update api \
 ### Contato
 
 **Diogo Carvalho de Matos**  
-🏢 **Cargo:** Arquiteto de Soluções  
-📧 **Email:** diogo.matos@empresa.com  
+🏢 **Cargo:** Arquiteto de Software e Soluções  
+📧 **Email:** diogo.matos@castgroup.com.br 
 💻 **Demo:** Spring Boot + Knative + Kubernetes On-Premise
 
 ### Recursos da Apresentação
@@ -1407,13 +1432,6 @@ kn service update api \
 - 📄 Este README completo
 - 💻 Código da demonstração: [GitHub Repository]
 - 🎥 Gravação: [Link se disponível]
-
-### Feedback
-
-Sua opinião é muito importante! Entre em contato para:
-- Dúvidas sobre implementação
-- Sugestões de melhorias
-- Compartilhar casos de uso
 
 ---
 

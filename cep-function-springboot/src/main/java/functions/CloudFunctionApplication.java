@@ -18,8 +18,29 @@ public class CloudFunctionApplication {
   @Bean
   public Function<Message<String>, String> cep() {
     return (inputMessage) -> {
-      String apiUrl = "https://viacep.com.br/ws/" + inputMessage.getPayload() + "/json/";
-      return  new RestTemplate().getForObject(apiUrl, String.class);
+      String cep = inputMessage.getPayload();
+
+      // Validação básica do CEP (8 dígitos)
+      if (cep == null || !cep.matches("\\d{8}")) {
+        return "{\"erro\": \"CEP inválido. Use 8 dígitos.\"}";
+      }
+
+      // Consulta API ViaCEP
+      String apiUrl = "https://viacep.com.br/ws/" + cep + "/json/";
+      RestTemplate restTemplate = new RestTemplate();
+
+      try {
+        String resultado = restTemplate.getForObject(apiUrl, String.class);
+
+        // Verifica se o CEP foi encontrado
+        if (resultado != null && resultado.contains("\"erro\"")) {
+          return "{\"erro\": \"CEP não encontrado.\"}";
+        }
+
+        return resultado;
+      } catch (Exception e) {
+        return "{\"erro\": \"Erro ao consultar API: " + e.getMessage() + "\"}";
+      }
     };
   }
 }
