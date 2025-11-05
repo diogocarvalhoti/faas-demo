@@ -676,38 +676,37 @@ import java.util.function.Function;
 @SpringBootApplication
 public class CloudFunctionApplication {
 
-  public static void main(String[] args) {
-    SpringApplication.run(CloudFunctionApplication.class, args);
-  }
+    public static void main(String[] args) {
+        SpringApplication.run(CloudFunctionApplication.class, args);
+    }
 
-  @Bean
-  public Function<Message<String>, String> cep() {
-    return (inputMessage) -> {
-      String cep = inputMessage.getPayload();
-      
-      // Validação básica do CEP (8 dígitos)
-      if (cep == null || !cep.matches("\\d{8}")) {
-        return "{\"erro\": \"CEP inválido. Use 8 dígitos.\"}";
-      }
-      
-      // Consulta API ViaCEP
-      String apiUrl = "https://viacep.com.br/ws/" + cep + "/json/";
-      RestTemplate restTemplate = new RestTemplate();
-      
-      try {
-        String resultado = restTemplate.getForObject(apiUrl, String.class);
-        
-        // Verifica se o CEP foi encontrado
-        if (resultado != null && resultado.contains("\"erro\"")) {
-          return "{\"erro\": \"CEP não encontrado.\"}";
-        }
-        
-        return resultado;
-      } catch (Exception e) {
-        return "{\"erro\": \"Erro ao consultar API: " + e.getMessage() + "\"}";
-      }
-    };
-  }
+    @Bean
+    public Function<Message<String>, String> cep() {
+        return (inputMessage) -> {
+            String cep = inputMessage.getPayload();
+
+            // Validação básica do CEP (8 dígitos)
+            if (cep == null || !cep.matches("\\d{8}")) {
+                return "{\"erro\": \"CEP inválido. Use 8 dígitos.\"}";
+            }
+
+            String apiUrl = "https://cep.awesomeapi.com.br/json/" + cep;
+            RestTemplate restTemplate = new RestTemplate();
+
+            try {
+                String resultado = restTemplate.getForObject(apiUrl, String.class);
+
+                // Verifica se o CEP foi encontrado
+                if (resultado != null && resultado.contains("\"erro\"")) {
+                    return "{\"erro\": \"CEP não encontrado.\"}";
+                }
+
+                return resultado;
+            } catch (Exception e) {
+                return "{\"erro\": \"Erro ao consultar API: " + e.getMessage() + "\"}";
+            }
+        };
+    }
 }
 ```
 
@@ -727,6 +726,7 @@ name: cep
 runtime: springboot
 registry: diogocarvalho/faas-demo  # Seu registry Docker
 image: index.docker.io/diogocarvalho/faas-demo/cep:latest
+created: 2025-11-05T10:00:00.000Z
 build:
   builder: pack
   buildEnvs:
@@ -884,9 +884,7 @@ kn service create api \
   --annotation autoscaling.knative.dev/minScale="0" \
   --annotation autoscaling.knative.dev/maxScale="10" \
   --annotation autoscaling.knative.dev/target="10"
-
-# Ou usar arquivo de configuração
-kn service apply -f service.yaml
+  
 ```
 
 ### Método 3: Usando kubectl (YAML)
@@ -975,7 +973,7 @@ kubectl get ksvc api -n cep -o jsonpath='{.status.url}'
 curl -X POST \
   http://api.cep.127.0.0.1.nip.io \
   -H "Content-Type: text/plain" \
-  -d "71691058"
+  -d "71691000"
 
 # Com port-forward (se necessário)
 kubectl port-forward -n kourier-system service/kourier 8080:80
@@ -983,7 +981,7 @@ kubectl port-forward -n kourier-system service/kourier 8080:80
 curl -X POST \
   http://api.cep.127.0.0.1.nip.io:8080 \
   -H "Content-Type: text/plain" \
-  -d "71691058"
+  -d "71691000"
 ```
 
 **Resposta esperada:**
@@ -1047,9 +1045,9 @@ Em outro terminal, faça uma requisição e meça o tempo:
 ```bash
 # Terminal 2: Requisição que vai acionar o cold start
 echo "=== Primeira requisição (Cold Start) ==="
-time curl -X POST http://api.cep.127.0.0.1.nip.io:8080 \
+time curl -X POST http://api.cep.127.0.0.1.nip.io \
   -H "Content-Type: text/plain" \
-  -d "71691058"
+  -d "71691000"
 ```
 
 **O que observar:**
@@ -1062,12 +1060,12 @@ time curl -X POST http://api.cep.127.0.0.1.nip.io:8080 \
 ```bash
 # Terminal 2: Requisições subsequentes serão mais rápidas
 echo "=== Segunda requisição (Warm) ==="
-time curl -X POST http://api.cep.127.0.0.1.nip.io:8080 \
+time curl -X POST http://api.cep.127.0.0.1.nip.io \
   -H "Content-Type: text/plain" \
   -d "01310100"
 
 echo "=== Terceira requisição (Warm) ==="
-time curl -X POST http://api.cep.127.0.0.1.nip.io:8080 \
+time curl -X POST http://api.cep.127.0.0.1.nip.io \
   -H "Content-Type: text/plain" \
   -d "20040020"
 ```
